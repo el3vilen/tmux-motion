@@ -21,8 +21,8 @@ motion_allowed "$pane" || finish
 [ "$(tmux display -p -t "$pane" '#{window_zoomed_flag}')" = "0" ] || finish
 [ "$(tmux display -p -t "$pane" '#{window_panes}')" -gt 1 ] || finish
 
-steps="$(motion_get @motion-shrink-steps 8)"
-duration="$(motion_get @motion-shrink-duration 180)"
+steps="$(motion_get @motion-shrink-steps 7)"
+duration="$(motion_get @motion-shrink-duration 140)"
 [ "$steps" -ge 1 ] 2>/dev/null || steps=1
 frame_ms=$((duration / steps))
 

@@ -30,10 +30,12 @@ cleanup
 "${T[@]}" set -g @motion-flash-duration 300
 "${T[@]}" set -g @motion-grow-duration 300
 "${T[@]}" set -g @motion-shrink-duration 300
+"${T[@]}" set -g @motion-zoom-duration 300
 "${T[@]}" set -g @motion-kill-bind x
 "${T[@]}" run-shell "$ROOT/motion.tmux"
 
-check "hooks installed" [ "$("${T[@]}" show-hooks -g | grep -c '\[90\]')" -eq 5 ]
+check "hooks installed" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 8 ]
+check "remain-on-exit turned on for exit shrink" [ "$("${T[@]}" show -gv remain-on-exit)" = on ]
 check "kill key bound" [ -n "$("${T[@]}" list-keys -T prefix x 2>/dev/null)" ]
 
 "${T[@]}" split-window -h
@@ -74,10 +76,31 @@ s="$(samples %2 '#{pane_height}' 8)"
 check "shrink passes through several heights ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 check "shrink kills the pane" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
 
+before="$("${T[@]}" display -p '#{window_layout}')"
+"${T[@]}" select-pane -t %1; sleep 0.3
+"${T[@]}" resize-pane -Z -t %1
+s="$(samples %1 '#{pane_width}x#{pane_height}' 7)"
+check "zoom in grows through several sizes ($s)" [ "$(uniq_count "$s")" -ge 4 ]
+sleep 0.3
+check "zoom in ends zoomed" [ "$("${T[@]}" display -p -t %1 '#{window_zoomed_flag}')" -eq 1 ]
+"${T[@]}" resize-pane -Z -t %1
+s="$(samples %1 '#{pane_width}x#{pane_height}' 7)"
+check "zoom out shrinks through several sizes ($s)" [ "$(uniq_count "$s")" -ge 4 ]
+sleep 0.3
+check "zoom out restores the layout exactly" [ "$("${T[@]}" display -p '#{window_layout}')" = "$before" ]
+check "zoom clears bookkeeping" [ -z "$("${T[@]}" show -wqv @motion-zoom-run)$("${T[@]}" show -wqv @motion-zoom-layout)" ]
+
+"${T[@]}" split-window -h -t %0 'sleep 0.3; exit 0'
+sleep 0.5
+s="$(samples %3 '#{pane_width}' 8)"
+check "exited pane shrinks before it goes ($s)" [ "$(uniq_count "$s")" -ge 3 ]
+check "exited pane is gone" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
+
 "${T[@]}" run-shell "$ROOT/motion.tmux"
-check "reload keeps a single hook set" [ "$("${T[@]}" show-hooks -g | grep -c '\[90\]')" -eq 5 ]
+check "reload keeps a single hook set" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 8 ]
 "${T[@]}" set -g @motion off
 "${T[@]}" run-shell "$ROOT/motion.tmux"
-check "@motion off removes hooks" [ "$("${T[@]}" show-hooks -g | grep -c '\[90\]')" -eq 0 ]
+check "@motion off removes hooks" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 0 ]
+check "@motion off restores remain-on-exit" [ "$("${T[@]}" show -gv remain-on-exit)" = off ]
 
 exit $fail

@@ -1,11 +1,12 @@
 # tmux-motion
 
 Small transitions for tmux. The active pane pulses when focus moves, new
-panes slide open, and killed panes slide shut. Pure shell, one `@plugin`
-line, no dependencies beyond tmux itself.
+panes slide open, closed panes slide shut, and zoom grows into place instead
+of snapping. Pure shell, one `@plugin` line, no dependencies beyond tmux
+itself.
 
 tmux has no animation engine and redraws only when state changes, so these are
-short stepped effects (a handful of frames inside 160 to 180 ms), not smooth
+short stepped effects (a handful of frames inside 140 to 180 ms), not smooth
 60 fps motion. They are meant to be felt as a hint of movement, not watched.
 
 ## Effects
@@ -14,7 +15,8 @@ short stepped effects (a handful of frames inside 160 to 180 ms), not smooth
 | ------ | ------- | ------- |
 | Flash  | focus moves to another pane, window or session; a pane or window is killed and focus lands somewhere new | on |
 | Grow   | a pane is split; the new pane opens from one cell to its final size along the split axis | on |
-| Shrink | a pane is killed through the plugin's key binding; it closes to one cell, then dies | off, see `@motion-kill-bind` |
+| Shrink | a pane's process exits (`exit`, `Ctrl-D`), or it is killed through the plugin's key binding; it closes to one cell, then goes | on; the key binding is opt-in, see `@motion-kill-bind` |
+| Zoom   | `resize-pane -Z` in either direction; the pane grows into the zoom or shrinks back into the layout | on |
 
 Flash fades the active pane's border color (and optionally its background)
 from a peak color back to your theme's color. When the theme color is a plain
@@ -58,11 +60,15 @@ Options are plain `set -g` lines and must come before the plugin loads.
 | `@motion-flash-duration` | `160` | total milliseconds |
 | `@motion-flash-steps` | `5` | frames; each frame is one redraw |
 | `@motion-grow` | `on` | slide new panes open |
-| `@motion-grow-duration` | `180` | milliseconds |
-| `@motion-grow-steps` | `8` | frames |
-| `@motion-shrink` | `on` | slide panes shut when killed through `@motion-kill-bind` |
-| `@motion-shrink-duration` | `180` | milliseconds |
-| `@motion-shrink-steps` | `8` | frames |
+| `@motion-grow-duration` | `140` | milliseconds |
+| `@motion-grow-steps` | `7` | frames |
+| `@motion-shrink` | `on` | slide panes shut on exit and through `@motion-kill-bind` |
+| `@motion-exit` | `on` | animate panes whose process exited; turns on `remain-on-exit` and blanks `remain-on-exit-format` while active, and restores both when turned off |
+| `@motion-shrink-duration` | `140` | milliseconds |
+| `@motion-shrink-steps` | `7` | frames |
+| `@motion-zoom` | `on` | animate zoom in and out |
+| `@motion-zoom-duration` | `180` | milliseconds |
+| `@motion-zoom-steps` | `8` | frames |
 | `@motion-kill-bind` | unset | prefix key to bind to shrink-then-kill, for example `x` |
 | `@motion-kill-confirm` | `on` | wrap the kill binding in tmux's usual `(y/n)` prompt |
 | `@motion-hook-index` | `90` | array index the plugin uses for its hooks; raise it if something of yours already lives there |
@@ -101,8 +107,18 @@ stored in a window option, so hammering a key never leaves a stale color or
 size behind. Selecting the pane that is already active (mouse-wheel scrolling
 routes through `select-pane`) is ignored.
 
-There is no hook before a pane is killed, which is why shrink only works
-through the plugin's own key binding.
+Shrink on exit relies on `remain-on-exit`: the dead pane stays just long
+enough to slide shut, with its "Pane is dead" banner blanked, and the plugin
+kills it at the end. There is no hook before `kill-pane`, which is why killing
+a live pane only animates through the plugin's own key binding.
+
+Zoom works around the fact that `resize-pane -Z` has already zoomed by the
+time its hook runs. Commands run from a hook do not fire hooks themselves, so
+the hook unzooms synchronously, before tmux draws, and the script grows the
+pane toward the window size, then restores the saved layout and zooms for real
+in one tmux call so the hand-over is a single redraw. Zoom out is the reverse:
+the hook pushes the pane to the window size before the first draw, the script
+shrinks it, and the restored layout is applied at the end.
 
 ## Caveats
 
@@ -110,11 +126,14 @@ through the plugin's own key binding.
   flicker. Shorten the durations, lower the steps or set `@motion-ssh off`.
 - Grow and shrink resize the neighbor pane too, so full-screen programs in the
   neighbor (vim, less, htop) receive a burst of resize events. Editors reflow
-  a few times during the 180 ms.
+  a few times during the 140 ms.
 - Zoomed windows are left alone.
 - Grow assumes the pane being split is the active one, which is what
   `prefix + %` and `prefix + "` do. A `split-window -t` aimed at another pane
   falls back to geometry and can pick the wrong axis in dense layouts.
+- `@motion-exit` sets `remain-on-exit on` globally. Anything else that relies
+  on it being off, or that reads dead panes, sees them for the duration of the
+  animation. Set `@motion-exit off` to leave the option alone.
 - Hooks from other plugins or your own config at the same index are
   overwritten. Change `@motion-hook-index` if that happens.
 
