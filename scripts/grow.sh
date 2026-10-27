@@ -15,8 +15,8 @@ tmux display -p -t "$pane" '' >/dev/null 2>&1 || exit 0
 motion_allowed "$pane" || exit 0
 [ "$final" -gt 2 ] 2>/dev/null || exit 0
 
-steps="$(motion_get @motion-grow-steps 6)"
-duration="$(motion_get @motion-grow-duration 120)"
+steps="$(motion_get @motion-grow-steps 8)"
+duration="$(motion_get @motion-grow-duration 180)"
 [ "$steps" -ge 1 ] 2>/dev/null || steps=1
 frame_ms=$((duration / steps))
 

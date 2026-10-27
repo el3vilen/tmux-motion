@@ -5,7 +5,7 @@ panes slide open, and killed panes slide shut. Pure shell, one `@plugin`
 line, no dependencies beyond tmux itself.
 
 tmux has no animation engine and redraws only when state changes, so these are
-short stepped effects (a handful of frames inside 120 to 160 ms), not smooth
+short stepped effects (a handful of frames inside 160 to 180 ms), not smooth
 60 fps motion. They are meant to be felt as a hint of movement, not watched.
 
 ## Effects
@@ -53,14 +53,16 @@ Options are plain `set -g` lines and must come before the plugin loads.
 | `@motion-flash` | `on` | flash on focus change |
 | `@motion-flash-target` | `border` | `border` (pane-active-border-style fg), `pane` (window-active-style bg) or `both` |
 | `@motion-flash-color` | `#ffffff` | peak color of the flash |
+| `@motion-flash-intensity` | `100` | how far toward the peak color the flash goes; `30` is a tint, `100` the full color |
+| `@motion-flash-border-intensity`, `@motion-flash-pane-intensity` | inherit | per-target override of the intensity |
 | `@motion-flash-duration` | `160` | total milliseconds |
 | `@motion-flash-steps` | `5` | frames; each frame is one redraw |
 | `@motion-grow` | `on` | slide new panes open |
-| `@motion-grow-duration` | `120` | milliseconds |
-| `@motion-grow-steps` | `6` | frames |
+| `@motion-grow-duration` | `180` | milliseconds |
+| `@motion-grow-steps` | `8` | frames |
 | `@motion-shrink` | `on` | slide panes shut when killed through `@motion-kill-bind` |
-| `@motion-shrink-duration` | `120` | milliseconds |
-| `@motion-shrink-steps` | `6` | frames |
+| `@motion-shrink-duration` | `180` | milliseconds |
+| `@motion-shrink-steps` | `8` | frames |
 | `@motion-kill-bind` | unset | prefix key to bind to shrink-then-kill, for example `x` |
 | `@motion-kill-confirm` | `on` | wrap the kill binding in tmux's usual `(y/n)` prompt |
 | `@motion-hook-index` | `90` | array index the plugin uses for its hooks; raise it if something of yours already lives there |
@@ -70,6 +72,7 @@ Example, a Catppuccin Mocha flavored setup:
 ```tmux
 set -g @motion-flash-target both
 set -g @motion-flash-color '#cba6f7'
+set -g @motion-flash-pane-intensity 30
 set -g @motion-kill-bind x
 ```
 
@@ -107,7 +110,7 @@ through the plugin's own key binding.
   flicker. Shorten the durations, lower the steps or set `@motion-ssh off`.
 - Grow and shrink resize the neighbor pane too, so full-screen programs in the
   neighbor (vim, less, htop) receive a burst of resize events. Editors reflow
-  a few times during the 120 ms.
+  a few times during the 180 ms.
 - Zoomed windows are left alone.
 - Grow assumes the pane being split is the active one, which is what
   `prefix + %` and `prefix + "` do. A `split-window -t` aimed at another pane

@@ -30,13 +30,17 @@ duration="$(motion_get @motion-flash-duration 160)"
 [ "$steps" -ge 1 ] 2>/dev/null || steps=1
 frame_ms=$((duration / steps))
 
-opts=() attrs=()
+opts=() attrs=() names=()
 case "$target" in
-  border) opts=(pane-active-border-style); attrs=(fg) ;;
-  pane)   opts=(window-active-style);      attrs=(bg) ;;
-  both)   opts=(pane-active-border-style window-active-style); attrs=(fg bg) ;;
+  border) opts=(pane-active-border-style); attrs=(fg); names=(border) ;;
+  pane)   opts=(window-active-style);      attrs=(bg); names=(pane) ;;
+  both)   opts=(pane-active-border-style window-active-style); attrs=(fg bg); names=(border pane) ;;
   *) exit 0 ;;
 esac
+
+# Intensity scales the peak toward the resting color: 100 flashes the full
+# color, 30 is a tint. A per-target value wins over the shared one.
+intensity="$(motion_get @motion-flash-intensity 100)"
 
 run_id="$$.$RANDOM"
 tmux set-option -w -t "$pane" @motion-flash-run "$run_id"
@@ -72,7 +76,9 @@ for ((f = 0; f < steps; f++)); do
   for i in "${!opts[@]}"; do
     base_attr="$(motion_style_get "${bases[$i]}" "${attrs[$i]}")"
     if motion_is_hex "$color" && motion_is_hex "$base_attr"; then
-      c="$(motion_mix "$color" "$base_attr" "$p")"
+      level="$(motion_get "@motion-flash-${names[$i]}-intensity" "$intensity")"
+      peak="$(motion_mix "$base_attr" "$color" "$level")"
+      c="$(motion_mix "$peak" "$base_attr" "$p")"
     else
       c=$color
     fi
