@@ -83,9 +83,15 @@ the command touched. The plugin installs hooks at a fixed array index
 Flash sets a window-scoped override of `pane-active-border-style` or
 `window-active-style` for each frame and unsets it at the end, so your global
 or theme value is never modified. If the window already had its own value, that
-value is restored instead. Grow and shrink step `resize-pane` along the split
-axis, which is inferred from pane geometry because tmux does not record the
-split direction.
+value is restored instead.
+
+Grow collapses the new pane to one cell inside the hook itself, before tmux
+draws the split, so the pane is never shown at full size first. tmux does not
+record which way a pane was split, so the hook works it out with formats: the
+pane that was split is normally the previously active one, and whether it now
+sits beside or above the new pane settles the axis. The background script
+then steps `resize-pane` back out to the size the layout gave the pane.
+Shrink does the same in reverse before `kill-pane`.
 
 A newer effect on the same window supersedes a running one through a run id
 stored in a window option, so hammering a key never leaves a stale color or
@@ -103,8 +109,9 @@ through the plugin's own key binding.
   neighbor (vim, less, htop) receive a burst of resize events. Editors reflow
   a few times during the 120 ms.
 - Zoomed windows are left alone.
-- A split inside a layout where the new pane has no obvious sibling along
-  either axis is not animated.
+- Grow assumes the pane being split is the active one, which is what
+  `prefix + %` and `prefix + "` do. A `split-window -t` aimed at another pane
+  falls back to geometry and can pick the wrong axis in dense layouts.
 - Hooks from other plugins or your own config at the same index are
   overwritten. Change `@motion-hook-index` if that happens.
 
