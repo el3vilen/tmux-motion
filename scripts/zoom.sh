@@ -20,8 +20,8 @@ tmux set-option -w -t "$pane" @motion-zoom-run "$run_id"
 guard="#{==:#{@motion-zoom-run},$run_id}"
 release="set-option -wu -t $pane @motion-zoom-run ; set-option -wu -t $pane @motion-zoom-layout"
 
-steps="$(motion_get @motion-zoom-steps 8)"
-duration="$(motion_get @motion-zoom-duration 180)"
+steps="$(motion_get @motion-zoom-steps 3)"
+duration="$(motion_get @motion-zoom-duration 120)"
 [ "$steps" -ge 1 ] 2>/dev/null || steps=1
 frame_ms=$((duration / steps))
 

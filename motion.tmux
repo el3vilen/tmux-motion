@@ -75,8 +75,11 @@ last_beside="##{!=:##{P:##{?##{&&:##{pane_last},$beside},x,}},}"
 last_stacked="##{!=:##{P:##{?##{&&:##{pane_last},$stacked},y,}},}"
 any_beside="##{!=:##{P:##{?$beside,x,}},}"
 is_x="##{?##{==:#{&&:#{pane_at_top},#{pane_at_bottom}},1},1,##{?##{==:#{&&:#{pane_at_left},#{pane_at_right}},1},0,##{?$last_beside,1,##{?$last_stacked,0,##{?$any_beside,1,0}}}}}"
-grow_x="resize-pane -t #{pane_id} -x 1 ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} x #{pane_width}\\\\\\\""
-grow_y="resize-pane -t #{pane_id} -y 1 ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} y #{pane_height}\\\\\\\""
+# The spacer takes all but one cell of the new pane, so the neighbor is resized
+# once, at the split, and grow.sh only ever trades cells between the new pane
+# and the spacer. Panes too small to hold a spacer are left alone.
+grow_x="#{?#{e|>:#{pane_width},4},split-window -d -h -t #{pane_id} -l #{e|-:#{pane_width},2} \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} x #{pane_width}\\\\\\\",if-shell -F 0 x}"
+grow_y="#{?#{e|>:#{pane_height},4},split-window -d -v -t #{pane_id} -l #{e|-:#{pane_height},2} \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} y #{pane_height}\\\\\\\",if-shell -F 0 x}"
 cond='#{&&:#{==:#{window_zoomed_flag},0},#{!=:#{@motion-grow},off}}'
 for h in "${grow_hooks[@]}"; do
   tmux set-hook -g "${h}[${INDEX}]" \
@@ -111,8 +114,16 @@ if motion_on @motion-exit on; then
   fi
   tmux set-option -g remain-on-exit on
   tmux set-option -g remain-on-exit-format ''
+  # Same two-pass trick as grow: pick the axis from where the neighbors are,
+  # split a one-cell spacer off the dead pane inside the hook, then let
+  # kill.sh slide the pane into it.
+  shrink_x="#{?#{e|>:#{pane_width},3},split-window -d -h -t #{pane_id} -l 1 \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; ,}run-shell -b \\\\\\\"$DIR/scripts/kill.sh #{pane_id} x\\\\\\\""
+  shrink_y="#{?#{e|>:#{pane_height},3},split-window -d -v -t #{pane_id} -l 1 \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; ,}run-shell -b \\\\\\\"$DIR/scripts/kill.sh #{pane_id} y\\\\\\\""
+  is_beside="##{?##{==:#{&&:#{pane_at_top},#{pane_at_bottom}},1},1,##{?##{==:#{&&:#{pane_at_left},#{pane_at_right}},1},0,##{?$any_beside,1,0}}}"
+  exit_cond='#{&&:#{==:#{window_zoomed_flag},0},#{!=:#{@motion-shrink},off}}'
   for h in "${exit_hooks[@]}"; do
-    tmux set-hook -g "${h}[${INDEX}]" "run-shell -b \"$kill '#{pane_id}'\""
+    tmux set-hook -g "${h}[${INDEX}]" \
+      "if-shell -F '$exit_cond' \"run-shell -C 'if-shell -F \\\"$is_beside\\\" \\\"$shrink_x\\\" \\\"$shrink_y\\\"'\" \"run-shell -b '$kill #{pane_id}'\""
   done
 else
   restore_remain

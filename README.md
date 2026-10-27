@@ -67,8 +67,8 @@ Options are plain `set -g` lines and must come before the plugin loads.
 | `@motion-shrink-duration` | `140` | milliseconds |
 | `@motion-shrink-steps` | `7` | frames |
 | `@motion-zoom` | `on` | animate zoom in and out |
-| `@motion-zoom-duration` | `180` | milliseconds |
-| `@motion-zoom-steps` | `8` | frames |
+| `@motion-zoom-duration` | `120` | milliseconds |
+| `@motion-zoom-steps` | `3` | frames; every frame reflows every pane, so keep this low |
 | `@motion-kill-bind` | unset | prefix key to bind to shrink-then-kill, for example `x` |
 | `@motion-kill-confirm` | `on` | wrap the kill binding in tmux's usual `(y/n)` prompt |
 | `@motion-hook-index` | `90` | array index the plugin uses for its hooks; raise it if something of yours already lives there |
@@ -94,13 +94,21 @@ Flash sets a window-scoped override of `pane-active-border-style` or
 or theme value is never modified. If the window already had its own value, that
 value is restored instead.
 
-Grow collapses the new pane to one cell inside the hook itself, before tmux
-draws the split, so the pane is never shown at full size first. tmux does not
-record which way a pane was split, so the hook works it out with formats: the
-pane that was split is normally the previously active one, and whether it now
-sits beside or above the new pane settles the axis. The background script
-then steps `resize-pane` back out to the size the layout gave the pane.
-Shrink does the same in reverse before `kill-pane`.
+Grow and shrink never resize the real neighbor more than once. Resizing a
+pane makes tmux re-wrap its lines and makes the program inside redraw, and
+doing that seven times in a row is what a jittery slide looks like. So the
+hook splits a throwaway spacer pane off the new pane, inside the hook itself
+and before tmux draws the split (commands run from a hook fire no hooks, so
+your own `after-split-window` hooks never see it). The neighbor gets its final
+size at the split, exactly as it would without the plugin, and the new pane
+then grows into the spacer one frame at a time. Killing the spacer at the end
+hands over the last cells in a single redraw. Shrink runs the same way in
+reverse: the pane slides into a spacer and both are killed together, so the
+neighbor expands once.
+
+tmux does not record which way a pane was split, so the hook works it out
+with formats: the pane that was split is normally the previously active one,
+and whether it now sits beside or above the new pane settles the axis.
 
 A newer effect on the same window supersedes a running one through a run id
 stored in a window option, so hammering a key never leaves a stale color or
@@ -110,9 +118,17 @@ routes through `select-pane`) is ignored.
 Shrink on exit relies on `remain-on-exit`: the dead pane stays just long
 enough to slide shut, with its "Pane is dead" banner blanked, and the plugin
 kills it at the end. There is no hook before `kill-pane`, which is why killing
-a live pane only animates through the plugin's own key binding.
+a live pane only animates through the plugin's own key binding. That path
+runs from a script rather than a hook, so it parks the spacer split in a
+one-shot hook and trips it with a silent `display-message`, which keeps your
+own split hooks out of it. A spacer that somehow outlives its animation exits
+on its own after 30 seconds and is removed.
 
-Zoom works around the fact that `resize-pane -Z` has already zoomed by the
+Zoom cannot use a spacer: the zoomed pane itself is what changes size, and
+every other pane has to give up room, so each frame reflows them all. That is
+why zoom defaults to three frames, a quick snap with a hint of motion, and
+why `@motion-zoom-steps 1` is the honest setting for a terminal that shows
+the jitter. Zoom works around the fact that `resize-pane -Z` has already zoomed by the
 time its hook runs. Commands run from a hook do not fire hooks themselves, so
 the hook unzooms synchronously, before tmux draws, and the script grows the
 pane toward the window size, then restores the saved layout and zooms for real
@@ -124,9 +140,12 @@ shrinks it, and the restored layout is applied at the end.
 
 - Every frame is a tmux redraw. Over a slow link the frames can read as
   flicker. Shorten the durations, lower the steps or set `@motion-ssh off`.
-- Grow and shrink resize the neighbor pane too, so full-screen programs in the
-  neighbor (vim, less, htop) receive a burst of resize events. Editors reflow
-  a few times during the 140 ms.
+- The pane being animated is resized every frame. For grow that is a fresh
+  shell and for shrink a pane on its way out, so it rarely matters, but a
+  prompt printed while the pane is a few cells wide wraps until the pane
+  reaches full width. Zoom resizes a live program and shows it.
+- For the length of a grow or shrink the window holds one extra pane, the
+  spacer, running `sleep`. Anything that counts or lists panes sees it.
 - Zoomed windows are left alone.
 - Grow assumes the pane being split is the active one, which is what
   `prefix + %` and `prefix + "` do. A `split-window -t` aimed at another pane

@@ -38,11 +38,12 @@ check "hooks installed" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw
 check "remain-on-exit turned on for exit shrink" [ "$("${T[@]}" show -gv remain-on-exit)" = on ]
 check "kill key bound" [ -n "$("${T[@]}" list-keys -T prefix x 2>/dev/null)" ]
 
-"${T[@]}" split-window -h
-s="$(samples %1 '#{pane_width}' 8)"
+p1="$("${T[@]}" split-window -h -P -F '#{pane_id}')"
+s="$(samples "$p1" '#{pane_width}' 8)"
 check "grow passes through several widths ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 sleep 0.3
-check "grow ends at layout width" [ "$("${T[@]}" display -p -t %1 '#{pane_width}')" -eq 59 ]
+check "grow ends at layout width" [ "$("${T[@]}" display -p -t "$p1" '#{pane_width}')" -eq 59 ]
+check "grow leaves no spacer behind" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
 check "grow clears its run id" [ -z "$("${T[@]}" show -wqv @motion-resize-run)" ]
 
 "${T[@]}" select-pane -L
@@ -66,35 +67,35 @@ sleep 0.3
 check "existing window-level style is restored" [ "$("${T[@]}" show -wqv pane-active-border-style)" = 'fg=#ff0000' ]
 "${T[@]}" set -wu pane-active-border-style
 
-"${T[@]}" split-window -v -t %0
-s="$(samples %2 '#{pane_height}' 8)"
+p2="$("${T[@]}" split-window -v -t %0 -P -F '#{pane_id}')"
+s="$(samples "$p2" '#{pane_height}' 8)"
 check "vertical grow passes through several heights ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 sleep 0.3
 
-"${T[@]}" run-shell -b "$ROOT/scripts/kill.sh %2"
-s="$(samples %2 '#{pane_height}' 8)"
+"${T[@]}" run-shell -b "$ROOT/scripts/kill.sh $p2"
+s="$(samples "$p2" '#{pane_height}' 8)"
 check "shrink passes through several heights ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 check "shrink kills the pane" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
 
 before="$("${T[@]}" display -p '#{window_layout}')"
-"${T[@]}" select-pane -t %1; sleep 0.3
-"${T[@]}" resize-pane -Z -t %1
-s="$(samples %1 '#{pane_width}x#{pane_height}' 7)"
+"${T[@]}" select-pane -t "$p1"; sleep 0.3
+"${T[@]}" resize-pane -Z -t "$p1"
+s="$(samples "$p1" '#{pane_width}x#{pane_height}' 7)"
 check "zoom in grows through several sizes ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 sleep 0.3
-check "zoom in ends zoomed" [ "$("${T[@]}" display -p -t %1 '#{window_zoomed_flag}')" -eq 1 ]
-"${T[@]}" resize-pane -Z -t %1
-s="$(samples %1 '#{pane_width}x#{pane_height}' 7)"
+check "zoom in ends zoomed" [ "$("${T[@]}" display -p -t "$p1" '#{window_zoomed_flag}')" -eq 1 ]
+"${T[@]}" resize-pane -Z -t "$p1"
+s="$(samples "$p1" '#{pane_width}x#{pane_height}' 7)"
 check "zoom out shrinks through several sizes ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 sleep 0.3
 check "zoom out restores the layout exactly" [ "$("${T[@]}" display -p '#{window_layout}')" = "$before" ]
 check "zoom clears bookkeeping" [ -z "$("${T[@]}" show -wqv @motion-zoom-run)$("${T[@]}" show -wqv @motion-zoom-layout)" ]
 
-"${T[@]}" split-window -h -t %0 'sleep 0.3; exit 0'
+p3="$("${T[@]}" split-window -h -t %0 -P -F '#{pane_id}' 'sleep 0.3; exit 0')"
 sleep 0.5
-s="$(samples %3 '#{pane_width}' 8)"
+s="$(samples "$p3" '#{pane_width}' 8)"
 check "exited pane shrinks before it goes ($s)" [ "$(uniq_count "$s")" -ge 3 ]
-check "exited pane is gone" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
+check "exited pane and its spacer are gone" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
 
 "${T[@]}" run-shell "$ROOT/motion.tmux"
 check "reload keeps a single hook set" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 8 ]

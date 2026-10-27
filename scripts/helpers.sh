@@ -127,3 +127,44 @@ motion_pane_axis() {
   done < <(tmux list-panes -t "$pane" -F '#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height}')
   return 1
 }
+
+# Spacers are throwaway panes that soak up the space a pane slides through, so
+# the real neighbor is resized once instead of once per frame. They run a
+# sleep tagged in the start command, and die on their own if a script fails.
+# shellcheck disable=SC2034  # used by motion.tmux and kill.sh
+MOTION_SPACER_CMD='MOTION_SPACER=1 exec sleep 30'
+
+motion_is_spacer() {
+  case "$(tmux display -p -t "$1" '#{pane_start_command}' 2>/dev/null)" in
+    *MOTION_SPACER*) return 0 ;;
+  esac
+  return 1
+}
+
+# motion_find_spacer PANE AXIS -> id of the spacer right of (x) or below (y) PANE.
+motion_find_spacer() {
+  local pane=$1 axis=$2 pl pt pw ph id l t cmd
+  read -r pl pt pw ph < <(tmux display -p -t "$pane" '#{pane_left} #{pane_top} #{pane_width} #{pane_height}')
+  while read -r id l t cmd; do
+    case "$cmd" in *MOTION_SPACER*) ;; *) continue ;; esac
+    if [ "$axis" = x ] && [ "$t" = "$pt" ] && [ "$l" -eq $((pl + pw + 1)) ]; then
+      printf '%s' "$id"; return 0
+    fi
+    if [ "$axis" = y ] && [ "$l" = "$pl" ] && [ "$t" -eq $((pt + ph + 1)) ]; then
+      printf '%s' "$id"; return 0
+    fi
+  done < <(tmux list-panes -t "$pane" -F '#{pane_id} #{pane_left} #{pane_top} #{pane_start_command}')
+  return 1
+}
+
+# motion_hookfree PANE COMMANDS
+# Run tmux COMMANDS without firing anyone's hooks. Commands run from inside a
+# hook never trigger hooks, so this parks them in a one-shot hook on a window
+# and trips it with a silent display-message.
+motion_hookfree() {
+  local pane=$1 cmds=$2 idx
+  idx="$(( $(motion_get @motion-hook-index 90) + 1 ))"
+  tmux set-hook -w -t "$pane" "after-display-message[$idx]" \
+    "$cmds ; set-hook -wu after-display-message[$idx]" \; \
+    display-message -p -t "$pane" '' >/dev/null
+}
