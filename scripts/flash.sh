@@ -15,6 +15,8 @@ fi
 
 motion_on @motion-flash on || exit 0
 motion_allowed "$pane" || exit 0
+# A resize fade owns the styles while it runs and flashes on its own.
+[ -z "$(tmux show-option -wqv -t "$pane" @motion-fade-run)" ] || exit 0
 
 # A select-pane on the pane that is already active (mouse wheel scrolling
 # routes through select-pane, so does hammering the same direction key) is

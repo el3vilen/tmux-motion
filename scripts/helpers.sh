@@ -31,6 +31,20 @@ motion_allowed() {
   return 0
 }
 
+# motion_query CMD [';' CMD]... -> MOTION_Q, one entry per tmux command: its
+# line of output, or empty. One round trip instead of one per value.
+motion_query() {
+  local sep='MOTION-SEP' args=() a line cur=""
+  for a in "$@"; do
+    if [ "$a" = ';' ]; then args+=(';' display-message -p "$sep" ';'); else args+=("$a"); fi
+  done
+  args+=(';' display-message -p "$sep")
+  MOTION_Q=()
+  while IFS= read -r line; do
+    if [ "$line" = "$sep" ]; then MOTION_Q+=("$cur"); cur=""; else cur=$line; fi
+  done < <(tmux "${args[@]}" 2>/dev/null)
+}
+
 # sleep for N milliseconds without forking anything but sleep itself.
 motion_sleep_ms() {
   local ms=$1 s
@@ -52,6 +66,18 @@ motion_mix() {
     $(( (fr * (100 - p) + tr * p) / 100 )) \
     $(( (fg * (100 - p) + tg * p) / 100 )) \
     $(( (fb * (100 - p) + tb * p) / 100 ))
+}
+
+# motion_mix_any FROM TO PERCENT -> motion_mix when both are #rrggbb, else
+# whichever of the two PERCENT is closer to (named colors cannot be blended).
+motion_mix_any() {
+  if motion_is_hex "$1" && motion_is_hex "$2"; then
+    motion_mix "$1" "$2" "$3"
+  elif [ "$3" -lt 50 ]; then
+    printf '%s' "$1"
+  else
+    printf '%s' "$2"
+  fi
 }
 
 # Ease-out: PERCENT in 0..100 -> eased 0..100. Fast start, slow finish.

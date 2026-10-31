@@ -2,7 +2,8 @@
 
 Small transitions for tmux. The active pane pulses when focus moves, new
 panes slide open, closed panes slide shut, and zoom grows into place instead
-of snapping. Pure shell, one `@plugin` line, no dependencies beyond tmux
+of snapping. Resizing a pane fades the window out and back in, so text
+re-wrapping is hidden. Pure shell, one `@plugin` line, no dependencies beyond tmux
 itself.
 
 tmux has no animation engine and redraws only when state changes, so these are
@@ -17,6 +18,7 @@ short stepped effects (a handful of frames inside 140 to 180 ms), not smooth
 | Grow   | a pane is split; the new pane opens from one cell to its final size along the split axis | on |
 | Shrink | a pane's process exits (`exit`, `Ctrl-D`), or it is killed through the plugin's key binding; it closes to one cell, then goes | on; the key binding is opt-in, see `@motion-kill-bind` |
 | Zoom   | `resize-pane -Z` in either direction; the pane grows into the zoom or shrinks back into the layout | on |
+| Fade   | a resize key (`prefix + M-Arrow`, `prefix + C-Arrow`, anything bound to plain `resize-pane -U/-D/-L/-R`) or a border drag with the mouse; the window fades out, resizes, and sweeps back in the direction the border moved, pane by pane, with a flash on the active pane | on |
 
 Flash fades the active pane's border color (and optionally its background)
 from a peak color back to your theme's color. When the theme color is a plain
@@ -69,6 +71,15 @@ Options are plain `set -g` lines and must come before the plugin loads.
 | `@motion-zoom` | `on` | animate zoom in and out |
 | `@motion-zoom-duration` | `120` | milliseconds |
 | `@motion-zoom-steps` | `3` | frames; every frame reflows every pane, so keep this low |
+| `@motion-fade` | `on` | fade on resize; takes over the resize key bindings and the border drag, and gives them back when `off` |
+| `@motion-fade-bg` | unset | your terminal's background as `#rrggbb`; styles that say `default` or `terminal` fade toward it, and the curtain uses it. Without it, those styles are left alone |
+| `@motion-fade-fg` | unset | your terminal's default text color as `#rrggbb`, so a `fg=terminal` style can be blended instead of switched |
+| `@motion-fade-curtain` | `on` | cover the window with a borderless popup while the resized programs redraw (keyboard resizes only) |
+| `@motion-fade-hold` | `30` | milliseconds the curtain stays up before the sweep starts |
+| `@motion-fade-out-duration`, `@motion-fade-out-steps` | `20`, `2` | fade out, before the resize |
+| `@motion-fade-in-duration`, `@motion-fade-in-steps` | `90`, `6` | sweep and fade back in, with the flash |
+| `@motion-fade-sweep` | `50` | share of the fade-in, in percent, the sweep takes to cross the window; each pane fades over the rest. `0` fades every pane at once |
+| `@motion-fade-drag-timeout` | `10000` | milliseconds a dragged-out fade waits for the drag to end before it fades back in anyway |
 | `@motion-kill-bind` | unset | prefix key to bind to shrink-then-kill, for example `x` |
 | `@motion-kill-confirm` | `on` | wrap the kill binding in tmux's usual `(y/n)` prompt |
 | `@motion-hook-index` | `90` | array index the plugin uses for its hooks; raise it if something of yours already lives there |
@@ -79,6 +90,8 @@ Example, a Catppuccin Mocha flavored setup:
 set -g @motion-flash-target both
 set -g @motion-flash-color '#cba6f7'
 set -g @motion-flash-pane-intensity 30
+set -g @motion-fade-bg '#1e1e2e'
+set -g @motion-fade-fg '#cdd6f4'
 set -g @motion-kill-bind x
 ```
 
@@ -136,7 +149,37 @@ in one tmux call so the hand-over is a single redraw. Zoom out is the reverse:
 the hook pushes the pane to the window size before the first draw, the script
 shrinks it, and the restored layout is applied at the end.
 
+Fade has no hook to start from either: tmux only has hooks after a resize,
+and by then the panes have the new size. So the plugin rebinds the resize
+keys to run `fade.sh`, which steps the text color of `window-style` and
+`window-active-style` and both border styles down to the background, then
+resizes. The resize and a borderless popup the size of the window go out in
+one command list, so tmux draws the popup before the resized panes. The
+programs inside redraw under it.
+
+The way back in follows the border: pushed left, the window is uncovered
+from the right edge toward the left; pushed up, from the bottom up. Each
+frame closes the popup and reopens it over the part the sweep has not
+reached, in one command list, so the curtain retreats without a gap. Each
+pane fades in through pane-level `window-style` overrides, starting when the
+sweep reaches its leading edge, and the active pane flashes on its turn: its
+border starts at the flash color and its background starts tinted. A border
+drag fades out when the drag starts (`MouseDrag1Border`) and sweeps back in
+the direction the mouse moved when it ends (`MouseDragEnd1Border`), without
+the curtain, since a popup would take the drag over. Panes that carry their
+own pane-level style (`select-pane -P`) are left out of the sweep.
+
 ## Caveats
+
+- tmux styles only recolor text drawn in the default color. Text a program
+  colors itself (an editor, a colored prompt, `ls` colors) does not fade; for
+  keyboard resizes the curtain hides it while it reflows, during a mouse drag
+  it stays visible.
+- Keys pressed while the fade curtain is up (about 75 ms) go to the popup
+  and are dropped. A held resize key repeats more slowly than without the plugin.
+- Fade rebinds only plain `resize-pane -U/-D/-L/-R [N]` and the default
+  `MouseDrag1Border` binding. A resize bound together with other commands,
+  or with `-x`/`-y`, is not touched.
 
 - Every frame is a tmux redraw. Over a slow link the frames can read as
   flicker. Shorten the durations, lower the steps or set `@motion-ssh off`.
@@ -165,7 +208,7 @@ and hooks at its index; nothing else is left behind.
 ## Development
 
 `test/smoke.sh` drives a throwaway tmux server (`-L motion-test`) through a
-split, a focus change, a kill and a reload, and asserts on the intermediate
+split, a focus change, a kill, a resize fade and a reload, and asserts on the intermediate
 sizes and styles. `shellcheck -x -P scripts motion.tmux scripts/*.sh` keeps the
 scripts clean.
 

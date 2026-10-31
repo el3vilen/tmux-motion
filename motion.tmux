@@ -43,8 +43,48 @@ restore_remain() {
   fi
 }
 
+# Fade on resize. There is no hook before a resize, so the resize keys
+# themselves go through fade.sh, which fades first and resizes after. Only
+# plain `resize-pane -U|-D|-L|-R [N]` bindings and the default border drag are
+# taken over; turning the effect off puts them back as they were.
+fade="$(printf '%q' "$DIR/scripts/fade.sh")"
+fade_keys() { # on|off
+  local line r table key dir n cmd
+  local plain='^bind-key +(-r +)?-T +([^ ]+) +([^ \\"'"'"']+) +resize-pane +(-[UDLR])( +([0-9]+))?$'
+  local ours='^bind-key +(-r +)?-T +([^ ]+) +([^ \\"'"'"']+) +run-shell +-b +.*fade\.sh resize .* (-[UDLR])( ([0-9]+))?"$'
+  while IFS= read -r line; do
+    if [[ $line =~ $plain ]] || [[ $line =~ $ours ]]; then
+      r=${BASH_REMATCH[1]:+-r} table=${BASH_REMATCH[2]} key=${BASH_REMATCH[3]}
+      dir=${BASH_REMATCH[4]} n=${BASH_REMATCH[6]}
+      if [ "$1" = on ]; then
+        cmd="run-shell -b \"$fade resize '#{client_name}' '#{pane_id}' $dir${n:+ $n}\""
+      else
+        cmd="resize-pane $dir${n:+ $n}"
+      fi
+      # shellcheck disable=SC2086  # $r is an optional flag
+      tmux bind-key $r -T "$table" "$key" "$cmd"
+    fi
+  done < <(tmux list-keys -T prefix; tmux list-keys -T root)
+
+  local drag end
+  drag="$(tmux list-keys -T root MouseDrag1Border 2>/dev/null)"
+  end="$(tmux list-keys -T root MouseDragEnd1Border 2>/dev/null)"
+  if [ "$1" = on ]; then
+    if [[ $drag =~ MouseDrag1Border\ +resize-pane\ -M$ ]] || [[ $drag == *fade.sh\ out* ]]; then
+      tmux bind-key -T root MouseDrag1Border "resize-pane -M ; run-shell -b \"$fade out '#{pane_id}'\""
+      [ -z "$end" ] || [[ $end == *fade.sh\ in* ]] &&
+        tmux bind-key -T root MouseDragEnd1Border "run-shell -b \"$fade in '#{pane_id}'\""
+    fi
+  else
+    [[ $drag == *fade.sh\ out* ]] && tmux bind-key -T root MouseDrag1Border resize-pane -M
+    [[ $end == *fade.sh\ in* ]] && tmux unbind-key -T root MouseDragEnd1Border
+  fi
+  return 0
+}
+
 if ! motion_on @motion on; then
   restore_remain
+  fade_keys off
   exit 0
 fi
 
@@ -127,6 +167,12 @@ if motion_on @motion-exit on; then
   done
 else
   restore_remain
+fi
+
+if motion_on @motion-fade on; then
+  fade_keys on
+else
+  fade_keys off
 fi
 
 key="$(motion_get @motion-kill-bind '')"

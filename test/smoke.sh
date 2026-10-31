@@ -32,6 +32,7 @@ cleanup
 "${T[@]}" set -g @motion-shrink-duration 300
 "${T[@]}" set -g @motion-zoom-duration 300
 "${T[@]}" set -g @motion-kill-bind x
+"${T[@]}" set -g @motion-fade-bg '#000000'
 "${T[@]}" run-shell "$ROOT/motion.tmux"
 
 check "hooks installed" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 8 ]
@@ -97,11 +98,33 @@ s="$(samples "$p3" '#{pane_width}' 8)"
 check "exited pane shrinks before it goes ($s)" [ "$(uniq_count "$s")" -ge 3 ]
 check "exited pane and its spacer are gone" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
 
+check "fade takes over the resize keys" grep -q fade.sh <<< "$("${T[@]}" list-keys -T prefix M-Up)"
+check "fade takes over the border drag" grep -q fade.sh <<< "$("${T[@]}" list-keys -T root MouseDrag1Border)"
+"${T[@]}" set -g window-style 'fg=#888888,bg=#101010'
+"${T[@]}" set -g @motion-fade-out-duration 150
+"${T[@]}" set -g @motion-fade-in-duration 300
+w="$("${T[@]}" display -p -t %0 '#{pane_width}')"
+"${T[@]}" run-shell -b "$ROOT/scripts/fade.sh resize '' %0 -L 3"
+s="$(samples %0 '#{s/ /_/:#{window-style}}' 10)"
+check "fade steps the text color through several values ($s)" [ "$(uniq_count "$s")" -ge 4 ]
+check "fade reaches the background" grep -q 'fg=#101010' <<< "$s"
+sleep 0.4
+check "fade resizes" [ "$("${T[@]}" display -p -t %0 '#{pane_width}')" -eq $((w - 3)) ]
+check "fade restores the styles" [ -z "$("${T[@]}" show -wqv window-style)$("${T[@]}" show -wqv pane-active-border-style)" ]
+check "fade clears the pane-level styles of the sweep" [ -z "$("${T[@]}" show -pqv -t %0 window-style)$("${T[@]}" show -pqv -t %0 window-active-style)$("${T[@]}" show -pqv -t "$p1" window-style)" ]
+check "fade clears bookkeeping" [ -z "$("${T[@]}" show -w | grep -E 'motion-(fade|orig|flash-run)')" ]
+"${T[@]}" run-shell -b "$ROOT/scripts/fade.sh out %0"; sleep 0.3
+check "drag start holds the fade" grep -q 'fg=#101010' <<< "$("${T[@]}" show -wqv window-style)"
+"${T[@]}" run-shell -b "$ROOT/scripts/fade.sh in %0"; sleep 0.5
+check "drag end fades back in" [ -z "$("${T[@]}" show -wqv window-style)$("${T[@]}" show -wqv @motion-fade-run)" ]
+"${T[@]}" set -gu window-style
+
 "${T[@]}" run-shell "$ROOT/motion.tmux"
 check "reload keeps a single hook set" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 8 ]
 "${T[@]}" set -g @motion off
 "${T[@]}" run-shell "$ROOT/motion.tmux"
 check "@motion off removes hooks" [ "$({ "${T[@]}" show-hooks -g; "${T[@]}" show-hooks -gw; } | grep -c '\[90\]')" -eq 0 ]
+check "@motion off gives the resize keys back" grep -q 'M-Up  *resize-pane -U 5$' <<< "$("${T[@]}" list-keys -T prefix M-Up)"
 check "@motion off restores remain-on-exit" [ "$("${T[@]}" show -gv remain-on-exit)" = off ]
 
 exit $fail
