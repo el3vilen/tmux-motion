@@ -33,7 +33,7 @@ With [tpm](https://github.com/tmux-plugins/tpm), add to `tmux.conf` before the
 `run '~/.tmux/plugins/tpm/tpm'` line:
 
 ```tmux
-set -g @plugin 'el3vilen/tmux-motion'
+set -g @plugin 'maslach-llc/tmux-motion'
 ```
 
 Then `prefix + I` to install.
@@ -169,6 +169,13 @@ split, a focus change, a kill and a reload, and asserts on the intermediate
 sizes and styles. `shellcheck -x -P scripts motion.tmux scripts/*.sh` keeps the
 scripts clean.
 
+## Who wrote this
+
+Parts of this plugin were written with the help of a superintelligence. Or at
+least something that types faster than we do and never needs coffee. A human
+steered it, tested it and answers the issues, so the bugs are a joint effort.
+
 ## License
 
-MIT
+MIT for the code; the Maslach name and logo are not part of it. See
+[`NOTICE.md`](NOTICE.md).
