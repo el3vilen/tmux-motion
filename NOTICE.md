@@ -1,6 +1,7 @@
 # Notice
 
-Copyright (c) 2026 Maslach LLC. All rights reserved, except as stated below.
+Copyright (c) 2026 Maslach LLC. All rights reserved, except as stated below. The source code is
+copyright Adam Maslach, as `LICENSE` states.
 
 ## Code
 
@@ -10,8 +11,9 @@ assets described below.
 
 ## Names and logos
 
-Maslach™, the Maslach logo, the Origami M mark and the Maslach wordmark are trademarks of Maslach
-LLC. They identify Maslach LLC and its products and are not licensed for any other use. You may not use them, or anything confusingly similar, to name, brand, endorse or
+Maslach™, the Maslach logo, the Origami M mark and the Maslach wordmark
+are trademarks of Maslach LLC. They identify Maslach LLC and its products and are not licensed for
+any other use. You may not use them, or anything confusingly similar, to name, brand, endorse or
 promote another product, service or business without prior written permission.
 
 ## Images and other media
