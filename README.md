@@ -15,7 +15,7 @@ short stepped effects (a handful of frames inside 140 to 180 ms), not smooth
 | Effect | Trigger | Default |
 | ------ | ------- | ------- |
 | Flash  | focus moves to another pane, window or session; a pane or window is killed and focus lands somewhere new | on |
-| Grow   | a pane is split; the new pane opens from one cell to its final size along the split axis | on |
+| Grow   | a pane is split; the border slides in from the window edge and the neighbor shrinks with it, inside a fade (or, in `spacer` mode, the neighbor takes its final size at once and the new pane opens from one cell) | on |
 | Shrink | a pane's process exits (`exit`, `Ctrl-D`), or it is killed through the plugin's key binding; it closes to one cell, then goes | on; the key binding is opt-in, see `@motion-kill-bind` |
 | Zoom   | `resize-pane -Z` in either direction; the pane grows into the zoom or shrinks back into the layout | on |
 | Fade   | a resize key (`prefix + M-Arrow`, `prefix + C-Arrow`, anything bound to plain `resize-pane -U/-D/-L/-R`) or a border drag with the mouse; the window fades out, resizes, and sweeps back in the direction the border moved, pane by pane, with a flash on the active pane | on |
@@ -62,8 +62,9 @@ Options are plain `set -g` lines and must come before the plugin loads.
 | `@motion-flash-duration` | `160` | total milliseconds |
 | `@motion-flash-steps` | `5` | frames; each frame is one redraw |
 | `@motion-grow` | `on` | slide new panes open |
-| `@motion-grow-duration` | `140` | milliseconds |
-| `@motion-grow-steps` | `7` | frames |
+| `@motion-grow-mode` | `border` | `border`: the border slides from the edge, the neighbor shrinks every frame and its text is faded meanwhile (uses the fade options). `spacer`: the neighbor is resized once and the new pane slides into a throwaway spacer |
+| `@motion-grow-duration` | `120` (`border`), `140` (`spacer`) | milliseconds |
+| `@motion-grow-steps` | `6` (`border`), `7` (`spacer`) | frames |
 | `@motion-shrink` | `on` | slide panes shut on exit and through `@motion-kill-bind` |
 | `@motion-exit` | `on` | animate panes whose process exited; turns on `remain-on-exit` and blanks `remain-on-exit-format` while active, and restores both when turned off |
 | `@motion-shrink-duration` | `140` | milliseconds |
@@ -107,7 +108,16 @@ Flash sets a window-scoped override of `pane-active-border-style` or
 or theme value is never modified. If the window already had its own value, that
 value is restored instead.
 
-Grow and shrink never resize the real neighbor more than once. Resizing a
+Grow in `border` mode, the default, looks like the split itself happening
+slowly: the hook saves the final layout, collapses the new pane to one cell
+before tmux draws anything, and `fade.sh grow` dims the window in one frame,
+slides the pane open (the neighbor shrinks with it and re-wraps each frame,
+which the fade mutes), applies the saved layout and sweeps back in from the
+side the border came from. Any `after-split-window` hook of yours that
+rearranges panes, such as `select-layout -E`, has already run by then, so
+its layout is the one restored; other panes it moved snap at the start.
+
+In `spacer` mode, grow and shrink never resize the real neighbor more than once. Resizing a
 pane makes tmux re-wrap its lines and makes the program inside redraw, and
 doing that seven times in a row is what a jittery slide looks like. So the
 hook splits a throwaway spacer pane off the new pane, inside the hook itself
@@ -183,12 +193,15 @@ own pane-level style (`select-pane -P`) are left out of the sweep.
 
 - Every frame is a tmux redraw. Over a slow link the frames can read as
   flicker. Shorten the durations, lower the steps or set `@motion-ssh off`.
+- In `border` mode the neighbor of a new pane is resized every frame, so a
+  program that colors its own text (an editor) visibly re-wraps during the
+  slide. `@motion-grow-mode spacer` avoids that at the cost of the jump.
 - The pane being animated is resized every frame. For grow that is a fresh
   shell and for shrink a pane on its way out, so it rarely matters, but a
   prompt printed while the pane is a few cells wide wraps until the pane
   reaches full width. Zoom resizes a live program and shows it.
-- For the length of a grow or shrink the window holds one extra pane, the
-  spacer, running `sleep`. Anything that counts or lists panes sees it.
+- For the length of a shrink, or a grow in `spacer` mode, the window holds
+  one extra pane, the spacer, running `sleep`. Anything that counts or lists panes sees it.
 - Zoomed windows are left alone.
 - Grow assumes the pane being split is the active one, which is what
   `prefix + %` and `prefix + "` do. A `split-window -t` aimed at another pane

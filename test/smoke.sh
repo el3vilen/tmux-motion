@@ -45,6 +45,7 @@ check "grow passes through several widths ($s)" [ "$(uniq_count "$s")" -ge 4 ]
 sleep 0.3
 check "grow ends at layout width" [ "$("${T[@]}" display -p -t "$p1" '#{pane_width}')" -eq 59 ]
 check "grow leaves no spacer behind" [ "$("${T[@]}" display -p '#{window_panes}')" -eq 2 ]
+check "grow clears its layout bookkeeping" [ -z "$("${T[@]}" show -wqv @motion-grow-layout)$("${T[@]}" show -wqv @motion-grow-geo)" ]
 check "grow clears its run id" [ -z "$("${T[@]}" show -wqv @motion-resize-run)" ]
 
 "${T[@]}" select-pane -L
@@ -68,6 +69,11 @@ sleep 0.3
 check "existing window-level style is restored" [ "$("${T[@]}" show -wqv pane-active-border-style)" = 'fg=#ff0000' ]
 "${T[@]}" set -wu pane-active-border-style
 
+p2="$("${T[@]}" split-window -v -t %0 -P -F '#{pane_id}')"
+s="$(samples %0 '#{pane_height}' 8)"
+check "border grow shrinks the neighbor gradually ($s)" [ "$(uniq_count "$s")" -ge 4 ]
+sleep 0.3
+"${T[@]}" kill-pane -t "$p2"; sleep 0.2
 p2="$("${T[@]}" split-window -v -t %0 -P -F '#{pane_id}')"
 s="$(samples "$p2" '#{pane_height}' 8)"
 check "vertical grow passes through several heights ($s)" [ "$(uniq_count "$s")" -ge 4 ]

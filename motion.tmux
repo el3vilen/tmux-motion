@@ -121,9 +121,19 @@ is_x="##{?##{==:#{&&:#{pane_at_top},#{pane_at_bottom}},1},1,##{?##{==:#{&&:#{pan
 grow_x="#{?#{e|>:#{pane_width},4},split-window -d -h -t #{pane_id} -l #{e|-:#{pane_width},2} \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} x #{pane_width}\\\\\\\",if-shell -F 0 x}"
 grow_y="#{?#{e|>:#{pane_height},4},split-window -d -v -t #{pane_id} -l #{e|-:#{pane_height},2} \\\\\\\"$MOTION_SPACER_CMD\\\\\\\" ; run-shell -b \\\\\\\"$DIR/scripts/grow.sh #{pane_id} y #{pane_height}\\\\\\\",if-shell -F 0 x}"
 cond='#{&&:#{==:#{window_zoomed_flag},0},#{!=:#{@motion-grow},off}}'
+grow_pre=""
+# Border mode: the border slides in from the edge and the neighbor shrinks
+# with it, inside a fade (scripts/fade.sh grow). The hook keeps the final
+# layout and geometry, collapses the new pane to one cell, and the script
+# slides it back open and applies the layout at the end.
+if [ "$(motion_get @motion-grow-mode border)" = border ]; then
+  grow_pre="set-option -wF @motion-grow-layout '#{window_layout}' ; set-option -wF @motion-grow-geo '#{pane_width} #{pane_height} #{pane_left} #{pane_top}' ; "
+  grow_x="#{?#{e|>:#{pane_width},2},resize-pane -t #{pane_id} -x 1 ; run-shell -b \\\\\\\"$DIR/scripts/fade.sh grow #{pane_id} x\\\\\\\",if-shell -F 0 x}"
+  grow_y="#{?#{e|>:#{pane_height},2},resize-pane -t #{pane_id} -y 1 ; run-shell -b \\\\\\\"$DIR/scripts/fade.sh grow #{pane_id} y\\\\\\\",if-shell -F 0 x}"
+fi
 for h in "${grow_hooks[@]}"; do
   tmux set-hook -g "${h}[${INDEX}]" \
-    "set-option -w @motion-zoomed 0 ; if-shell -F '$cond' \"run-shell -C 'if-shell -F \\\"$is_x\\\" \\\"$grow_x\\\" \\\"$grow_y\\\"'\""
+    "set-option -w @motion-zoomed 0 ; ${grow_pre}if-shell -F '$cond' \"run-shell -C 'if-shell -F \\\"$is_x\\\" \\\"$grow_x\\\" \\\"$grow_y\\\"'\""
 done
 
 # Zoom. resize-pane -Z fires after-resize-pane with the zoom already applied,

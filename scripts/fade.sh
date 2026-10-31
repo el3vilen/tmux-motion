@@ -5,6 +5,11 @@
 #   inside redraw, then sweep the curtain off in the direction the border
 #   moved. Each pane fades back in as the sweep passes it, and the active pane
 #   flashes when its turn comes.
+# fade.sh grow PANE AXIS
+#   A split, border mode. The hook in motion.tmux saved the final layout and
+#   the new pane's final geometry (@motion-grow-layout, @motion-grow-geo), and
+#   collapsed the new pane PANE to one cell along AXIS (x or y). Fade down,
+#   slide the border to its place, apply the saved layout and sweep back in.
 # fade.sh out PANE
 #   A mouse drag on a border started. Fade down and stay there until
 #   `fade.sh in` or a safety timeout.
@@ -26,6 +31,7 @@ client=""
 case "$mode" in
   resize) client=${1:-} pane=${2:-}; shift 2 2>/dev/null || exit 0 ;;
   out|in) pane=${1:-} ;;
+  grow) pane=${1:-} axis=${2:-} ;;
   *) exit 0 ;;
 esac
 [ -n "$pane" ] || pane="$(tmux display -p '#{pane_id}')" || exit 0
@@ -33,7 +39,8 @@ esac
 opts=(window-style window-active-style pane-border-style pane-active-border-style)
 settings=(fade fade-bg fade-fg fade-curtain fade-hold fade-out-steps fade-out-duration
   fade-in-steps fade-in-duration fade-sweep fade-drag-timeout flash flash-target
-  flash-color flash-intensity flash-border-intensity flash-pane-intensity)
+  flash-color flash-intensity flash-border-intensity flash-pane-intensity
+  grow-layout grow-geo grow-steps grow-duration)
 
 # Everything the fade needs to know, in one round trip.
 q=(display -p -t "$pane" '#{window_panes} #{window_zoomed_flag} #{?#{@motion},#{@motion},on} #{?#{@motion-ssh},#{@motion-ssh},on} #{P:#{pane_id} }' ';'
@@ -80,8 +87,38 @@ elif [ "${ssh_ok:-on}" != on ]; then
   # Only the SSH opt-out needs the environment looked at.
   motion_allowed "$pane" || allowed=0
 fi
+# grow_slide [GUARD]: slide the collapsed new pane open, frame by frame, and
+# apply the saved layout at the end. The neighbor shrinks with it, so its
+# text re-wraps every frame; the fade around this is what mutes that.
+grow_slide() {
+  local g=${1:-1} steps duration layout geo w h final f p size start now
+  setting layout grow-layout ''
+  setting geo grow-geo ''
+  read -r w h _ <<< "$geo"
+  final=$w
+  [ "$axis" = y ] && final=$h
+  setting steps grow-steps 6
+  setting duration grow-duration 120
+  [ "$steps" -ge 1 ] 2>/dev/null || steps=1
+  if [ -n "$final" ] && [ "$final" -gt 1 ] 2>/dev/null; then
+    printf -v start '%d' $(( ${EPOCHREALTIME/./} / 1000 ))
+    for ((f = 1; f < steps; f++)); do
+      p=$((f * 1000 / steps))
+      p=$((1000 - (1000 - p) * (1000 - p) / 1000))
+      size=$((1 + (final - 1) * p / 1000))
+      tmux if-shell -F -t "$pane" "$g" "resize-pane -t $pane -$axis $size" 2>/dev/null || return 1
+      printf -v now '%d' $(( ${EPOCHREALTIME/./} / 1000 ))
+      motion_sleep_ms $(( start + duration * f / steps - now > 0 ? start + duration * f / steps - now : 0 ))
+    done
+  fi
+  # select-layout fires after-select-layout, which only clears the zoom
+  # marker; nothing else of the plugin listens there.
+  tmux if-shell -F -t "$pane" "$g" "select-layout -t $pane '$layout' ; set-option -wu -t $pane @motion-grow-layout ; set-option -wu -t $pane @motion-grow-geo" 2>/dev/null
+}
+
 if [ "$allowed" = 0 ] || [ "${panes:-1}" -lt 2 ] || [ "$zoomed" = 1 ]; then
   [ "$mode" = resize ] && tmux resize-pane -t "$pane" "$@"
+  [ "$mode" = grow ] && grow_slide
   exit 0
 fi
 # `in` only ends a fade that a drag started.
@@ -97,7 +134,17 @@ guard="#{==:#{@motion-fade-run},$run_id}"
 # its flag. A drag is read from the pane edges: the start of the drag
 # recorded them, and the first edge that moved since tells which way.
 dir=""
-if [ "$mode" = resize ]; then
+if [ "$mode" = grow ]; then
+  # The border slides toward the edge the pane was collapsed against: a pane
+  # opened on the right was pushed right, so its left edge travels left.
+  read -r _ _ from_left from_top <<< "${set[grow-geo]:-}"
+  read -r now_left now_top <<< "$(tmux display -p -t "$pane" '#{pane_left} #{pane_top}')"
+  if [ "$axis" = x ]; then
+    dir=R; [ "${now_left:-0}" -gt "${from_left:-0}" ] && dir=L
+  else
+    dir=D; [ "${now_top:-0}" -gt "${from_top:-0}" ] && dir=U
+  fi
+elif [ "$mode" = resize ]; then
   for a in "$@"; do
     case "$a" in -L) dir=L ;; -R) dir=R ;; -U) dir=U ;; -D) dir=D ;; esac
   done
@@ -298,9 +345,11 @@ sleep_until() {
   motion_sleep_ms $(( $1 + $2 - now > 0 ? $1 + $2 - now : 0 ))
 }
 
+# fade_out [STEPS]: STEPS overrides @motion-fade-out-steps.
 fade_out() {
   local steps duration f start p
   setting steps fade-out-steps 2
+  [ -n "${1:-}" ] && steps=$1
   setting duration fade-out-duration 20
   [ "$steps" -ge 1 ] 2>/dev/null || steps=1
   # Already faded (a fade still in flight): jump straight to the bottom.
@@ -459,6 +508,12 @@ case "$mode" in
       tmux resize-pane -t "$pane" "$@"
     fi
     fade_in "$use_curtain"
+    ;;
+  grow)
+    # The slide is the motion here; dim in one frame so it starts at once.
+    fade_out 1
+    grow_slide "$guard" || exit 0
+    fade_in 0
     ;;
   out)
     fade_out
